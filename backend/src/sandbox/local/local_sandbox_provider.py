@@ -1,8 +1,11 @@
+import logging
+
 from src.sandbox.local.local_sandbox import LocalSandbox
 from src.sandbox.sandbox import Sandbox
 from src.sandbox.sandbox_provider import SandboxProvider
 
 _singleton: LocalSandbox | None = None
+logger = logging.getLogger(__name__)
 
 
 class LocalSandboxProvider(SandboxProvider):
@@ -32,9 +35,9 @@ class LocalSandboxProvider(SandboxProvider):
             # Only add mapping if skills directory exists
             if skills_path.exists():
                 mappings[container_path] = str(skills_path)
-        except Exception as e:
+        except Exception:
             # Log but don't fail if config loading fails
-            print(f"Warning: Could not setup skills path mapping: {e}")
+            logger.warning("Could not setup skills path mapping", exc_info=True)
 
         return mappings
 

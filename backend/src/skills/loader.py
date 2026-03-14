@@ -1,8 +1,12 @@
+import logging
 import os
 from pathlib import Path
 
 from .parser import parse_skill_file
 from .types import Skill
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_skills_root_path() -> Path:
@@ -84,9 +88,9 @@ def load_skills(skills_path: Path | None = None, use_config: bool = True, enable
         extensions_config = ExtensionsConfig.from_file()
         for skill in skills:
             skill.enabled = extensions_config.is_skill_enabled(skill.name, skill.category)
-    except Exception as e:
+    except Exception:
         # If config loading fails, default to all enabled
-        print(f"Warning: Failed to load extensions config: {e}")
+        logger.warning("Failed to load extensions config", exc_info=True)
 
     # Filter by enabled status if requested
     if enabled_only:
