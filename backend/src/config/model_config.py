@@ -27,3 +27,11 @@ class ModelConfig(BaseModel):
             "This is a shortcut for `when_thinking_enabled` and will be merged with `when_thinking_enabled` if both are provided."
         ),
     )
+    request_timeout: int | None = Field(
+        default=None,
+        description="Request timeout in seconds (default: 600s if not set)"
+    )
+    max_retries: int | None = Field(
+        default=None,
+        description="Max retries on failure (default: 2)"
+    )

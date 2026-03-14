@@ -37,6 +37,8 @@ models:
   #   max_tokens: 4096
   #   temperature: 0.7
   #   supports_vision: true # Enable vision support for view_image tool
+  #   request_timeout: 360   # Request timeout in seconds (default: 600s if not set)
+  #   max_retries: 2         # Max retries on failure (default: 2)
 
   # Example: Anthropic Claude model
   # - name: claude-3-5-sonnet
@@ -116,6 +118,26 @@ models:
   #   base_url: https://openrouter.ai/api/v1
   #   max_tokens: 8192
   #   temperature: 0.7
+
+  # Example: OpenAI-compatible gateway with optional custom reasoning compatibility
+  # - name: vendor-gpt-compatible
+  #   display_name: Vendor GPT Compatible
+  #   use: src.models.patched_openai_compatible:PatchedOpenAICompatibleChatModel
+  #   model: gpt-5.2
+  #   api_key: $OPENAI_API_KEY
+  #   base_url: $OPENAI_BASE_URL
+  #   max_tokens: 128000
+  #   supports_thinking: true
+  #   supports_vision: true
+  #   supports_reasoning_effort: true
+  #   when_thinking_enabled:
+  #     extra_body:
+  #       thinking:
+  #         type: enabled
+  #   # Optional: defaults to "none" when thinking is disabled
+  #   # thinking_disabled_reasoning_effort: none
+  #   # Optional: only enable this for vendors that require model names like gpt-5.2(high)
+  #   # reasoning_effort_as_model_suffix: true
 
 # ============================================================================
 # Tool Groups Configuration
