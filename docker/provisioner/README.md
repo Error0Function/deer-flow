@@ -38,7 +38,7 @@ The **Sandbox Provisioner** is a FastAPI service that dynamically manages sandbo
 
 ## Requirements
 
-Host machine with a running Kubernetes cluster (Docker Desktop K8s, OrbStack, minikube, kind, etc.)
+Host machine with a running Kubernetes cluster (k3s, Docker Desktop K8s, OrbStack, minikube, kind, etc.)
 
 ### Enable Kubernetes in Docker Desktop
 1. Open Docker Desktop settings
@@ -134,7 +134,7 @@ The provisioner is configured via environment variables (set in [docker-compose-
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `K8S_NAMESPACE` | `deer-flow` | Kubernetes namespace for sandbox resources |
-| `SANDBOX_IMAGE` | `enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest` | Container image for sandbox Pods |
+| `SANDBOX_IMAGE` | `ghcr.io/agent-infra/sandbox:latest` | Container image for sandbox Pods |
 | `SKILLS_HOST_PATH` | - | **Host machine** path to skills directory (must be absolute) |
 | `THREADS_HOST_PATH` | - | **Host machine** path to threads data directory (must be absolute) |
 | `KUBECONFIG_PATH` | `/root/.kube/config` | Path to kubeconfig **inside** the provisioner container |
@@ -143,7 +143,7 @@ The provisioner is configured via environment variables (set in [docker-compose-
 
 ### Important: K8S_API_SERVER Override
 
-If your kubeconfig uses `localhost`, `127.0.0.1`, or `0.0.0.0` as the API server address (common with OrbStack, minikube, kind), the provisioner **cannot** reach it from inside the Docker container. 
+If your kubeconfig uses `localhost`, `127.0.0.1`, or `0.0.0.0` as the API server address (common with k3s, OrbStack, minikube, kind), the provisioner **cannot** reach it from inside the Docker container.
 
 **Solution**: Set `K8S_API_SERVER` to use `host.docker.internal`:
 
@@ -164,9 +164,10 @@ kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
 ### Host Machine Requirements
 
 1. **Kubernetes Cluster**: 
+   - k3s, or
    - Docker Desktop with Kubernetes enabled, or
    - OrbStack (built-in K8s), or
-   - minikube, kind, k3s, etc.
+   - minikube, kind, etc.
 
 2. **kubectl Configured**:
    - `~/.kube/config` must exist and be valid
@@ -189,6 +190,10 @@ The provisioner runs as part of the docker-compose-dev stack:
 
 ```bash
 # Start Docker services (provisioner starts only when config.yaml enables provisioner mode)
+make docker-start
+
+# If you want to discard persisted queue/thread/sandbox state first
+make docker-reset-state
 make docker-start
 
 # Or start just the provisioner
@@ -306,6 +311,8 @@ docker exec deer-flow-gateway curl -s $SANDBOX_URL/v1/sandbox
 - Test from host: `curl http://localhost:NODE_PORT/v1/sandbox`
 - Ensure `extra_hosts` is set in docker-compose (Linux)
 - Check `NODE_HOST` env var matches how backend reaches host
+
+On WSL2 + Docker Engine + k3s, DeerFlow itself only requires the backend containers to reach `http://host.docker.internal:<NodePort>`. Direct Windows-host access to that NodePort is optional.
 
 ## Security Considerations
 

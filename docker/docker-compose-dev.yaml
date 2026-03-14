@@ -26,10 +26,10 @@ services:
       dockerfile: Dockerfile
     container_name: deer-flow-provisioner
     volumes:
-      - ~/.kube/config:/root/.kube/config:ro
+      - ${DEER_FLOW_KUBECONFIG_SOURCE_PATH:-~/.kube/config}:/root/.kube/config:ro
     environment:
-      - K8S_NAMESPACE=deer-flow
-      - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
+      - K8S_NAMESPACE=${DEER_FLOW_K8S_NAMESPACE:-deer-flow}
+      - SANDBOX_IMAGE=${DEER_FLOW_SANDBOX_IMAGE:-ghcr.io/agent-infra/sandbox:latest}
       # Host paths for K8s HostPath volumes (must be absolute paths accessible by K8s node)
       # On Docker Desktop/OrbStack, use your actual host paths like /Users/username/...
       # Set these in your shell before running docker-compose:
@@ -37,10 +37,10 @@ services:
       - SKILLS_HOST_PATH=${DEER_FLOW_ROOT}/skills
       - THREADS_HOST_PATH=${DEER_FLOW_ROOT}/backend/.deer-flow/threads
       - KUBECONFIG_PATH=/root/.kube/config
-      - NODE_HOST=host.docker.internal
+      - NODE_HOST=${DEER_FLOW_NODE_HOST:-host.docker.internal}
       # Override K8S API server URL since kubeconfig uses 127.0.0.1
       # which is unreachable from inside the container
-      - K8S_API_SERVER=https://host.docker.internal:26443
+      - K8S_API_SERVER=${DEER_FLOW_K8S_API_SERVER:-https://host.docker.internal:26443}
     env_file:
       - ../.env
     extra_hosts:
@@ -146,7 +146,7 @@ services:
       dockerfile: backend/Dockerfile
       # cache_from disabled - requires manual setup: mkdir -p /tmp/docker-cache-langgraph
     container_name: deer-flow-langgraph
-    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --host 0.0.0.0 --port 2024 > /app/logs/langgraph.log 2>&1"
+    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --no-reload --host 0.0.0.0 --port 2024 > /app/logs/langgraph.log 2>&1"
     volumes:
       - ../backend/:/app/backend/
       # Preserve the .venv built during Docker image build — mounting the full backend/

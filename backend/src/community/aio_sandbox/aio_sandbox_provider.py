@@ -491,8 +491,8 @@ class AioSandboxProvider(SandboxProvider):
 
         info = self._backend.create(thread_id, sandbox_id, extra_mounts=extra_mounts or None)
 
-        # Wait for sandbox to be ready
-        if not wait_for_sandbox_ready(info.sandbox_url, timeout=60):
+        # Wait for sandbox to be ready (5 minutes timeout for slow container startup)
+        if not wait_for_sandbox_ready(info.sandbox_url, timeout=300):
             self._backend.destroy(info)
             raise RuntimeError(f"Sandbox {sandbox_id} failed to become ready within timeout at {info.sandbox_url}")
 

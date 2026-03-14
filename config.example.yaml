@@ -152,7 +152,7 @@ tools:
   - name: web_fetch
     group: web
     use: src.community.jina_ai.tools:web_fetch_tool
-    timeout: 10
+    timeout: 120
 
   # Web fetch tool (uses InfoQuest AI reader)
   # - name: web_fetch
@@ -245,11 +245,14 @@ sandbox:
 #   #   DATABASE_URL: $DATABASE_URL  # Reads from host's DATABASE_URL env var
 
 # Option 3: Provisioner-managed AIO Sandbox (docker-compose-dev)
-# Each sandbox_id gets a dedicated Pod in k3s, managed by the provisioner.
-# Recommended for production or advanced users who want better isolation and scalability.:
+# Each sandbox_id gets a dedicated Pod in your Kubernetes cluster, managed by the provisioner.
+# Validated with single-node k3s on WSL2 + Docker Engine.
+# Recommended when you want isolated sandbox Pods without moving the whole DeerFlow app into Kubernetes.
 # sandbox:
 #   use: src.community.aio_sandbox:AioSandboxProvider
 #   provisioner_url: http://provisioner:8002
+#   # Optional: override the sandbox image pulled by the provisioner
+#   # image: ghcr.io/agent-infra/sandbox:latest
 
 # ============================================================================
 # Subagents Configuration
@@ -314,7 +317,7 @@ summarization:
   trigger:
     # Trigger when token count reaches 15564
     - type: tokens
-      value: 15564
+      value: 120000
     # Uncomment to also trigger when message count reaches 50
     # - type: messages
     #   value: 50
@@ -337,7 +340,7 @@ summarization:
 
   # Maximum tokens to keep when preparing messages for summarization
   # Set to null to skip trimming (not recommended for very long conversations)
-  trim_tokens_to_summarize: 15564
+  trim_tokens_to_summarize: 160000
 
   # Custom summary prompt template (null = use default LangChain prompt)
   # The prompt should guide the model to extract important context

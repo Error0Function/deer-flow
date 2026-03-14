@@ -147,6 +147,13 @@ make docker-start   # Start services (auto-detects sandbox mode from config.yaml
 
 `make docker-start` starts `provisioner` only when `config.yaml` uses provisioner mode (`sandbox.use: src.community.aio_sandbox:AioSandboxProvider` with `provisioner_url`).
 
+If previous LangGraph queue data or sandbox resources should be discarded before boot:
+
+```bash
+make docker-reset-state
+make docker-start
+```
+
 **Production** (builds images locally, mounts runtime config and data):
 
 ```bash
@@ -464,6 +471,10 @@ All dict-returning methods are validated against Gateway Pydantic response model
 - [Configuration Guide](backend/docs/CONFIGURATION.md) - Setup and configuration instructions
 - [Architecture Overview](backend/CLAUDE.md) - Technical architecture details
 - [Backend Architecture](backend/README.md) - Backend architecture and API reference
+- [Docker + K3s Deployment Guide](docs/DOCKER_K3S_DEPLOYMENT.md) - Validated Compose + provisioner + k3s sandbox deployment shape
+- [Portainer Dev Stack File](docker/portainer-stack-dev.yaml) - Portainer-owned Docker stack definition that preserves the existing script path
+- [WSL + Docker + K3s Setup Notes](docs/WSL_DOCKER_K3S_WINDOWS_SETUP.md) - Windows/WSL2 environment decisions, pitfalls, and rebuild checklist
+- [Development Pitfalls And Logging](docs/DEVELOPMENT_PITFALLS_AND_LOGGING.md) - Real deployment pitfalls, current logging map, and the unified dev log workflow
 
 ## Contributing
 

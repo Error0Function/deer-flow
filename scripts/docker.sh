@@ -15,6 +15,94 @@ DOCKER_DIR="$PROJECT_ROOT/docker"
 # Docker Compose command with project name
 COMPOSE_CMD="docker compose -p deer-flow-dev -f docker-compose-dev.yaml"
 
+resolve_kubeconfig_source() {
+    if [ -n "$DEER_FLOW_KUBECONFIG_SOURCE_PATH" ]; then
+        echo "$DEER_FLOW_KUBECONFIG_SOURCE_PATH"
+        return
+    fi
+
+    if [ -n "$KUBECONFIG" ]; then
+        echo "${KUBECONFIG%%:*}"
+        return
+    fi
+
+    echo "$HOME/.kube/config"
+}
+
+resolve_k8s_api_server_for_container() {
+    if [ -n "$DEER_FLOW_K8S_API_SERVER" ]; then
+        echo "$DEER_FLOW_K8S_API_SERVER"
+        return
+    fi
+
+    local kubeconfig_source
+    kubeconfig_source="$(resolve_kubeconfig_source)"
+
+    if [ ! -f "$kubeconfig_source" ]; then
+        echo ""
+        return
+    fi
+
+    local server
+    server="$(awk '/^[[:space:]]*server:[[:space:]]*/ { sub(/^[[:space:]]*server:[[:space:]]*/, "", $0); print; exit }' "$kubeconfig_source")"
+    if [ -z "$server" ]; then
+        echo ""
+        return
+    fi
+
+    case "$server" in
+        https://127.0.0.1:*|https://localhost:*|https://0.0.0.0:*)
+            local port="${server##*:}"
+            echo "https://host.docker.internal:${port}"
+            ;;
+        *)
+            echo "$server"
+            ;;
+    esac
+}
+
+ensure_k8s_namespace() {
+    local namespace="${DEER_FLOW_K8S_NAMESPACE:-deer-flow}"
+    local kubeconfig_source
+    kubeconfig_source="$(resolve_kubeconfig_source)"
+
+    if [ ! -f "$kubeconfig_source" ]; then
+        echo -e "${YELLOW}✗ kubeconfig not found at $kubeconfig_source${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Ensuring Kubernetes namespace exists: $namespace${NC}"
+    kubectl --kubeconfig "$kubeconfig_source" create namespace "$namespace" --dry-run=client -o yaml | \
+        kubectl --kubeconfig "$kubeconfig_source" apply -f -
+}
+
+reset_runtime_state() {
+    local sandbox_mode="${1:-$(detect_sandbox_mode)}"
+    local langgraph_state_dir="$PROJECT_ROOT/backend/.langgraph_api"
+    local thread_state_dir="$PROJECT_ROOT/backend/.deer-flow/threads"
+
+    echo -e "${BLUE}Resetting DeerFlow runtime state...${NC}"
+
+    mkdir -p "$langgraph_state_dir"
+    find "$langgraph_state_dir" -maxdepth 1 -type f -name '*.pckl' -delete
+
+    mkdir -p "$thread_state_dir"
+    find "$thread_state_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+    if [ "$sandbox_mode" = "provisioner" ]; then
+        local namespace="${DEER_FLOW_K8S_NAMESPACE:-deer-flow}"
+        local kubeconfig_source
+        kubeconfig_source="$(resolve_kubeconfig_source)"
+
+        if [ -f "$kubeconfig_source" ]; then
+            echo -e "${BLUE}Deleting provisioner-managed pods and services in namespace ${namespace}${NC}"
+            kubectl --kubeconfig "$kubeconfig_source" delete pod,service --all -n "$namespace" --ignore-not-found >/dev/null 2>&1 || true
+        fi
+    fi
+
+    echo -e "${GREEN}✓ Runtime state reset complete${NC}"
+}
+
 detect_sandbox_mode() {
     local config_file="$PROJECT_ROOT/config.yaml"
     local sandbox_use=""
@@ -77,7 +165,7 @@ init() {
     echo "=========================================="
     echo ""
 
-    SANDBOX_IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+    SANDBOX_IMAGE="${DEER_FLOW_SANDBOX_IMAGE:-ghcr.io/agent-infra/sandbox:latest}"
 
     if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${SANDBOX_IMAGE}$"; then
         echo -e "${BLUE}Pulling sandbox image: $SANDBOX_IMAGE ...${NC}"
@@ -86,14 +174,36 @@ init() {
         echo -e "${GREEN}Sandbox image already exists locally: $SANDBOX_IMAGE${NC}"
     fi
 
+    if command -v k3s >/dev/null 2>&1; then
+        echo ""
+        echo -e "${BLUE}Checking k3s/containerd cache for sandbox image...${NC}"
+        if sudo -n k3s ctr images ls >/dev/null 2>&1; then
+            if sudo -n k3s ctr images ls | awk '{print $1}' | grep -qx "$SANDBOX_IMAGE"; then
+                echo -e "${GREEN}Sandbox image already exists in k3s/containerd: $SANDBOX_IMAGE${NC}"
+            else
+                echo -e "${BLUE}Pulling sandbox image into k3s/containerd...${NC}"
+                sudo -n k3s ctr images pull "$SANDBOX_IMAGE"
+            fi
+        else
+            echo -e "${YELLOW}sudo is required to inspect k3s/containerd cache; you may be prompted once.${NC}"
+            if sudo k3s ctr images ls | awk '{print $1}' | grep -qx "$SANDBOX_IMAGE"; then
+                echo -e "${GREEN}Sandbox image already exists in k3s/containerd: $SANDBOX_IMAGE${NC}"
+            else
+                echo -e "${BLUE}Pulling sandbox image into k3s/containerd...${NC}"
+                sudo k3s ctr images pull "$SANDBOX_IMAGE"
+            fi
+        fi
+    fi
+
     echo ""
-    echo -e "${GREEN}✓ Sandbox image is ready.${NC}"
+    echo -e "${GREEN}✓ Sandbox image is ready for Docker and k3s.${NC}"
     echo ""
     echo -e "${YELLOW}Next step: make docker-start${NC}"
 }
 
 # Start Docker development environment
 start() {
+    local start_option="${1:-}"
     local sandbox_mode
     local services
 
@@ -103,6 +213,15 @@ start() {
     echo ""
 
     sandbox_mode="$(detect_sandbox_mode)"
+
+    if [ "$start_option" = "--reset-state" ]; then
+        reset_runtime_state "$sandbox_mode"
+        echo ""
+    elif [ -n "$start_option" ]; then
+        echo -e "${YELLOW}Unknown option for start: $start_option${NC}"
+        echo "Usage: $0 start [--reset-state]"
+        exit 1
+    fi
 
     if [ "$sandbox_mode" = "provisioner" ]; then
         services="frontend gateway langgraph provisioner nginx"
@@ -122,6 +241,24 @@ start() {
     if [ -z "$DEER_FLOW_ROOT" ]; then
         export DEER_FLOW_ROOT="$PROJECT_ROOT"
         echo -e "${BLUE}Setting DEER_FLOW_ROOT=$DEER_FLOW_ROOT${NC}"
+        echo ""
+    fi
+
+    if [ "$sandbox_mode" = "provisioner" ]; then
+        export DEER_FLOW_KUBECONFIG_SOURCE_PATH="${DEER_FLOW_KUBECONFIG_SOURCE_PATH:-$(resolve_kubeconfig_source)}"
+        export DEER_FLOW_K8S_API_SERVER="${DEER_FLOW_K8S_API_SERVER:-$(resolve_k8s_api_server_for_container)}"
+        export DEER_FLOW_K8S_NAMESPACE="${DEER_FLOW_K8S_NAMESPACE:-deer-flow}"
+        export DEER_FLOW_NODE_HOST="${DEER_FLOW_NODE_HOST:-host.docker.internal}"
+
+        if [ -z "$DEER_FLOW_K8S_API_SERVER" ]; then
+            echo -e "${YELLOW}✗ Could not determine Kubernetes API server for provisioner mode.${NC}"
+            exit 1
+        fi
+
+        echo -e "${BLUE}Using kubeconfig: $DEER_FLOW_KUBECONFIG_SOURCE_PATH${NC}"
+        echo -e "${BLUE}Using Kubernetes API for containers: $DEER_FLOW_K8S_API_SERVER${NC}"
+        echo ""
+        ensure_k8s_namespace
         echo ""
     fi
     
@@ -222,6 +359,10 @@ stop() {
     echo -e "${GREEN}✓ Docker services stopped${NC}"
 }
 
+reset_state() {
+    reset_runtime_state
+}
+
 # Restart Docker development environment
 restart() {
     echo "========================================"
@@ -246,7 +387,7 @@ help() {
     echo ""
     echo "Commands:"
     echo "  init          - Pull the sandbox image (speeds up first Pod startup)"
-    echo "  start         - Start Docker services (auto-detects sandbox mode from config.yaml)"
+    echo "  start [--reset-state] - Start Docker services (auto-detects sandbox mode from config.yaml)"
     echo "  restart       - Restart all running Docker services"
     echo "  logs [option] - View Docker development logs"
     echo "                  --frontend   View frontend logs only"
@@ -254,6 +395,7 @@ help() {
     echo "                  --nginx      View nginx logs only"
     echo "                  --provisioner View provisioner logs only"
     echo "  stop          - Stop Docker development services"
+    echo "  reset-state   - Clear LangGraph state, thread data, and provisioner-created sandbox resources"
     echo "  help          - Show this help message"
     echo ""
 }
@@ -265,7 +407,7 @@ main() {
             init
             ;;
         start)
-            start
+            start "$2"
             ;;
         restart)
             restart
@@ -275,6 +417,9 @@ main() {
             ;;
         stop)
             stop
+            ;;
+        reset-state)
+            reset_state
             ;;
         help|--help|-h|"")
             help
