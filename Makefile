@@ -1,6 +1,6 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config check install dev dev-daemon start stop up down clean docker-init docker-start docker-reset-state docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-summary docker-logs-errors docker-logs-events docker-logs-sandbox docker-logs-correlate portainer-agent-install portainer-agent-status portainer-agent-uninstall
+.PHONY: help config check install dev dev-daemon start stop up down clean docker-init docker-start docker-reset-state docker-stop docker-logs docker-logs-frontend docker-logs-frontend-v2-dev docker-logs-frontend-v2-release docker-logs-gateway docker-logs-summary docker-logs-errors docker-logs-events docker-logs-sandbox docker-logs-correlate portainer-agent-install portainer-agent-status portainer-agent-uninstall
 
 PYTHON ?= python
 
@@ -27,6 +27,8 @@ help:
 	@echo "  make docker-stop     - Stop Docker development services"
 	@echo "  make docker-logs     - View Docker development logs"
 	@echo "  make docker-logs-frontend - View Docker frontend logs"
+	@echo "  make docker-logs-frontend-v2-dev - View Solid v2 dev logs"
+	@echo "  make docker-logs-frontend-v2-release - View Solid v2 release logs"
 	@echo "  make docker-logs-gateway - View Docker gateway logs"
 	@echo "  make docker-logs-summary  - Show unified log/runtime summary"
 	@echo "  make docker-logs-errors   - Scan recent logs for warnings/errors"
@@ -153,6 +155,10 @@ docker-logs:
 # View Docker development logs
 docker-logs-frontend:
 	@./scripts/docker.sh logs --frontend
+docker-logs-frontend-v2-dev:
+	@./scripts/docker.sh logs --frontend-v2-dev
+docker-logs-frontend-v2-release:
+	@./scripts/docker.sh logs --frontend-v2-release
 docker-logs-gateway:
 	@./scripts/docker.sh logs --gateway
 

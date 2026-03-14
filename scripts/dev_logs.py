@@ -45,6 +45,7 @@ DEFAULT_WSL_DISTRO = os.environ.get("DEER_FLOW_WSL_DISTRO", "Ubuntu")
 
 FILE_SOURCES = {
     "frontend": LOG_DIR / "frontend.log",
+    "frontend-v2-dev": LOG_DIR / "frontend-v2-dev.log",
     "gateway": LOG_DIR / "gateway.log",
     "langgraph": LOG_DIR / "langgraph.log",
     "local-nginx": LOG_DIR / "nginx.log",
@@ -53,6 +54,7 @@ FILE_SOURCES = {
 DOCKER_SOURCES = {
     "nginx": "nginx",
     "provisioner": "provisioner",
+    "frontend-v2-release": "frontend-v2-release",
 }
 
 ERROR_PATTERN = re.compile(
@@ -525,8 +527,8 @@ def command_summary(namespace: str) -> int:
     print_k8s_summary(namespace)
     print_k8s_events(namespace, 10)
     print_section("Recommended Sources")
-    print("gateway/langgraph/frontend: file logs under logs/")
-    print("nginx/provisioner: docker logs")
+    print("gateway/langgraph/frontend/frontend-v2-dev: file logs under logs/")
+    print("nginx/provisioner/frontend-v2-release: docker logs")
     print("sandbox pods: kubectl logs")
     print("sandbox pod diagnostics: python scripts/dev_logs.py inspect-sandbox --sandbox-id <id>")
     print("cross-system correlation: python scripts/dev_logs.py correlate --thread-id <id>")

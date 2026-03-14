@@ -17,7 +17,10 @@ Phase 1 focuses on the smallest useful surface:
 
 The legacy frontend remains available at `/`.
 
-The new Solid frontend is mounted behind nginx at `/v2/`.
+The new Solid frontend now has two nginx-backed entrypoints:
+
+- `/v2/` for the stable release-like build
+- `/v2-dev/` for the hot-reloading development build
 
 ## Local Development
 
@@ -26,11 +29,11 @@ pnpm install
 pnpm dev
 ```
 
-By default the app serves from `http://localhost:5173/v2/`.
+By default the dev server serves from `http://localhost:5173/v2-dev/`.
 
 When DeerFlow is running through the existing nginx reverse proxy, use
-`http://localhost:2026/v2/` so the Solid app can share the same backend routes
-as the legacy frontend.
+`http://localhost:2026/v2-dev/` for live edits or `http://localhost:2026/v2/`
+for the stable build that mirrors production routing more closely.
 
 ## Scripts
 
@@ -45,6 +48,7 @@ pnpm preview
 Optional variables:
 
 ```bash
+VITE_APP_BASE_PATH=/v2-dev/
 VITE_BACKEND_BASE_URL=
 VITE_LANGGRAPH_BASE_URL=
 ```
@@ -57,3 +61,24 @@ Leave them empty to use the nginx proxy paths.
 - The UI is new, but the backend contracts are still the same DeerFlow APIs.
 - Message rendering is intentionally simple right now; richer rendering can come
   back once the core flow is stable.
+
+## Deferred Design Notes
+
+These discussion points are intentionally recorded before the visual polish
+phase starts, so feature work can continue without forgetting the design
+questions that still need a deliberate answer.
+
+- Keep Phase 1 focused on core workspace behavior first:
+  - thread loading
+  - thread switching
+  - message submission
+  - run status recovery
+  - long-conversation handling
+  - tool-call visibility
+- Do not treat the current v2 appearance as the intended final art direction.
+- Before visual polish, align on the product shape of the workspace:
+  - should it feel like a research workbench, a chat IDE, or a more productized messenger
+  - should the interface favor dense information or a roomier layout
+  - should tool activity be prominent by default or collapsed until needed
+- Visual styling can follow after the core interaction model is stable, but the
+  information architecture should be discussed before deeper component growth.

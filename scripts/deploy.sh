@@ -17,7 +17,29 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 DOCKER_DIR="$REPO_ROOT/docker"
-COMPOSE_CMD=(docker compose -p deer-flow -f "$DOCKER_DIR/docker-compose.yaml")
+
+# Native Windows docker-compose may still default to the legacy builder.
+# Force BuildKit so existing backend/frontend Dockerfiles build consistently.
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
+export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
+
+resolve_compose_base_cmd() {
+    if command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return
+    fi
+
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return
+    fi
+
+    echo "Neither docker-compose nor docker compose is available." >&2
+    exit 1
+}
+
+COMPOSE_CMD="$(resolve_compose_base_cmd)"
+COMPOSE_ARGS=(-p deer-flow -f "$DOCKER_DIR/docker-compose.yaml")
 
 resolve_kubeconfig_source() {
     if [ -n "$DEER_FLOW_KUBECONFIG_SOURCE_PATH" ]; then
@@ -227,7 +249,7 @@ detect_sandbox_mode() {
 # ── down ──────────────────────────────────────────────────────────────────────
 
 if [ "$CMD" = "down" ]; then
-    # Set minimal env var defaults so docker compose can parse the file without
+    # Set minimal env var defaults so docker-compose can parse the file without
     # warning about unset variables that appear in volume specs.
     export DEER_FLOW_HOME="${DEER_FLOW_HOME:-$REPO_ROOT/backend/.deer-flow}"
     export DEER_FLOW_CONFIG_PATH="${DEER_FLOW_CONFIG_PATH:-$DEER_FLOW_HOME/config.yaml}"
@@ -235,7 +257,7 @@ if [ "$CMD" = "down" ]; then
     export DEER_FLOW_DOCKER_SOCKET="${DEER_FLOW_DOCKER_SOCKET:-/var/run/docker.sock}"
     export DEER_FLOW_REPO_ROOT="${DEER_FLOW_REPO_ROOT:-$REPO_ROOT}"
     export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-placeholder}"
-    "${COMPOSE_CMD[@]}" down
+    $COMPOSE_CMD "${COMPOSE_ARGS[@]}" down
     exit 0
 fi
 
@@ -311,7 +333,7 @@ echo "Building images and starting containers..."
 echo ""
 
 # shellcheck disable=SC2086
-"${COMPOSE_CMD[@]}" $extra_args up --build -d --remove-orphans $services
+$COMPOSE_CMD "${COMPOSE_ARGS[@]}" $extra_args up --build -d --remove-orphans $services
 
 echo ""
 echo "=========================================="

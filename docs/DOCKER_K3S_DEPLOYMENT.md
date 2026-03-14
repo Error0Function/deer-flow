@@ -147,6 +147,101 @@ kubectl get pods,svc -n deer-flow
 kubectl describe pod -n deer-flow sandbox-<id>
 ```
 
+## Fast Resume After Reboot
+
+If the machine was shut down and you want to get back to the current working
+state quickly, use this order.
+
+### 1. Confirm the base host services are back
+
+In Windows PowerShell:
+
+```powershell
+docker version
+docker-compose version
+kubectl get nodes -o wide
+```
+
+Expected:
+
+- `docker version` should show the Windows client and the WSL Docker server
+- `docker-compose version` should return `v5.1.0` or newer
+- `kubectl get nodes -o wide` should show the local k3s node as `Ready`
+
+If `docker` or `kubectl` fail, check whether WSL is running:
+
+```powershell
+wsl -l -v
+```
+
+### 2. Start the DeerFlow stack from WSL-backed scripts
+
+Use the repo scripts for actual stack startup:
+
+```bash
+make docker-start
+```
+
+If you want a clean runtime state first:
+
+```bash
+make docker-reset-state
+make docker-start
+```
+
+### 3. Verify the three frontend entrypoints
+
+```text
+http://127.0.0.1:2026/
+http://127.0.0.1:2026/v2/
+http://127.0.0.1:2026/v2-dev/
+```
+
+Current meaning:
+
+- `/` = legacy frontend
+- `/v2/` = stable Solid release build
+- `/v2-dev/` = hot-reloading Solid dev build
+
+### 4. Use the right CLI for the right job
+
+Keep this distinction in mind on this machine:
+
+- Windows-native `docker`, `docker-compose`, and `kubectl` are good for status
+  checks and daily operations.
+- For this repository's bind-mounted development stack, actual Compose rebuilds
+  are more reliable from the WSL side because the Docker Engine lives in WSL and
+  the repo is currently on a Windows-mounted path.
+
+That means:
+
+- okay from Windows:
+  - `docker ps`
+  - `docker logs ...`
+  - `docker-compose version`
+  - `kubectl get pods -A`
+- prefer WSL-backed repo scripts for rebuild/start flows:
+  - `make docker-start`
+  - `make docker-stop`
+  - `make docker-reset-state`
+
+### 5. If the v2 routes look broken
+
+Check the two v2 services and nginx first:
+
+```bash
+python scripts/dev_logs.py summary
+make docker-logs-frontend-v2-dev
+docker logs deer-flow-frontend-v2-release --tail 100
+docker logs deer-flow-nginx --tail 100
+```
+
+The common healthy state is:
+
+- `frontend-v2-dev` running and serving `/v2-dev/`
+- `frontend-v2-release` running and serving `/v2/`
+- `nginx` proxying all three frontends on port `2026`
+
 ## Verification checklist
 
 Gateway health:

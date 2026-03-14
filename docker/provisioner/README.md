@@ -197,7 +197,7 @@ make docker-reset-state
 make docker-start
 
 # Or start just the provisioner
-docker compose -p deer-flow-dev -f docker/docker-compose-dev.yaml up -d provisioner
+docker-compose -p deer-flow-dev -f docker/docker-compose-dev.yaml up -d provisioner
 ```
 
 The compose file:

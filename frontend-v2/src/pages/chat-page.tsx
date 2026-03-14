@@ -11,6 +11,7 @@ import {
 } from "solid-js";
 
 import { ChatComposer } from "../components/chat-composer";
+import { withAppBasePath } from "../lib/base-path";
 import { MessageTimeline } from "../components/message-timeline";
 import {
   cancelRun,
@@ -135,7 +136,7 @@ export const ChatPage = () => {
     if (wasPersisted) {
       clearPendingMessage(threadId);
       if (typeof location.query.pending === "string") {
-        window.history.replaceState(window.history.state, "", `/v2/chats/${threadId}`);
+        window.history.replaceState(window.history.state, "", withAppBasePath(`/chats/${threadId}`));
       }
       setOptimisticMessage(null);
     }

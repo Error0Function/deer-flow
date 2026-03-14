@@ -12,8 +12,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DOCKER_DIR="$PROJECT_ROOT/docker"
 
-# Docker Compose command with project name
-COMPOSE_CMD="docker compose -p deer-flow-dev -f docker-compose-dev.yaml"
+# Native Windows docker-compose may still default to the legacy builder.
+# Force BuildKit so existing backend/frontend Dockerfiles build consistently.
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
+export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
+
+resolve_compose_base_cmd() {
+    if command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return
+    fi
+
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return
+    fi
+
+    echo "Neither docker-compose nor docker compose is available." >&2
+    exit 1
+}
+
+# Prefer docker-compose for this repo so Windows and WSL operators share the
+# same command shape. Fall back to docker compose only when necessary.
+COMPOSE_CMD="$(resolve_compose_base_cmd) -p deer-flow-dev -f docker-compose-dev.yaml"
 
 resolve_kubeconfig_source() {
     if [ -n "$DEER_FLOW_KUBECONFIG_SOURCE_PATH" ]; then
@@ -224,9 +245,9 @@ start() {
     fi
 
     if [ "$sandbox_mode" = "provisioner" ]; then
-        services="frontend gateway langgraph provisioner nginx"
+        services="frontend frontend-v2-dev frontend-v2-release gateway langgraph provisioner nginx"
     else
-        services="frontend gateway langgraph nginx"
+        services="frontend frontend-v2-dev frontend-v2-release gateway langgraph nginx"
     fi
 
     echo -e "${BLUE}Detected sandbox mode: $sandbox_mode${NC}"
@@ -303,6 +324,8 @@ start() {
     echo "=========================================="
     echo ""
     echo "  🌐 Application: http://localhost:2026"
+    echo "  ⚡ v2 Dev:      http://localhost:2026/v2-dev/"
+    echo "  📦 v2 Release:  http://localhost:2026/v2/"
     echo "  📡 API Gateway: http://localhost:2026/api/*"
     echo "  🤖 LangGraph:   http://localhost:2026/api/langgraph/*"
     echo ""
@@ -319,6 +342,14 @@ logs() {
         --frontend)
             service="frontend"
             echo -e "${BLUE}Viewing frontend logs...${NC}"
+            ;;
+        --frontend-v2-dev)
+            service="frontend-v2-dev"
+            echo -e "${BLUE}Viewing frontend-v2-dev logs...${NC}"
+            ;;
+        --frontend-v2-release)
+            service="frontend-v2-release"
+            echo -e "${BLUE}Viewing frontend-v2-release logs...${NC}"
             ;;
         --gateway)
             service="gateway"
@@ -337,7 +368,7 @@ logs() {
             ;;
         *)
             echo -e "${YELLOW}Unknown option: $1${NC}"
-            echo "Usage: $0 logs [--frontend|--gateway|--nginx|--provisioner]"
+            echo "Usage: $0 logs [--frontend|--frontend-v2-dev|--frontend-v2-release|--gateway|--nginx|--provisioner]"
             exit 1
             ;;
     esac
@@ -375,6 +406,8 @@ restart() {
     echo -e "${GREEN}✓ Docker services restarted${NC}"
     echo ""
     echo "  🌐 Application: http://localhost:2026"
+    echo "  ⚡ v2 Dev:      http://localhost:2026/v2-dev/"
+    echo "  📦 v2 Release:  http://localhost:2026/v2/"
     echo "  📋 View logs: make docker-dev-logs"
     echo ""
 }
@@ -391,6 +424,8 @@ help() {
     echo "  restart       - Restart all running Docker services"
     echo "  logs [option] - View Docker development logs"
     echo "                  --frontend   View frontend logs only"
+    echo "                  --frontend-v2-dev View Solid dev frontend logs only"
+    echo "                  --frontend-v2-release View Solid release frontend logs only"
     echo "                  --gateway    View gateway logs only"
     echo "                  --nginx      View nginx logs only"
     echo "                  --provisioner View provisioner logs only"

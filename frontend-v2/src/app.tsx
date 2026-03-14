@@ -3,6 +3,7 @@ import type { ParentComponent } from "solid-js";
 import { Show } from "solid-js";
 
 import { ThreadSidebar } from "./components/thread-sidebar";
+import { APP_BASE_PATH, withAppBasePath } from "./lib/base-path";
 import { ChatPage } from "./pages/chat-page";
 import { HomePage } from "./pages/home-page";
 
@@ -18,7 +19,8 @@ const Shell: ParentComponent = (props) => {
             <h2>DeerFlow Workspace v2</h2>
             <p class="muted">
               Solid-first experiment. Keep the legacy UI at `/` and compare it
-              against this new workspace under `/v2/`.
+              against this new workspace under <code>{`${APP_BASE_PATH}/`}</code>.
+              The dev route hot-reloads; the release route stays stable until the next rebuild.
             </p>
           </div>
           <div class="toolbar-row">
@@ -26,7 +28,7 @@ const Shell: ParentComponent = (props) => {
               Open legacy UI
             </a>
             <Show when={location.pathname !== "/chats/new"}>
-              <a class="button" href="/v2/chats/new">
+              <a class="button" href={withAppBasePath("/chats/new")}>
                 New conversation
               </a>
             </Show>
@@ -40,7 +42,7 @@ const Shell: ParentComponent = (props) => {
 
 export const App = () => {
   return (
-    <Router base="/v2" root={Shell}>
+    <Router base={APP_BASE_PATH} root={Shell}>
       <Route path="/" component={HomePage} />
       <Route path="/chats">
         <Route path="/" component={() => <Navigate href="/chats/new" />} />
