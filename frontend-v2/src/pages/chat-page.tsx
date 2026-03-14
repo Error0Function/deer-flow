@@ -54,6 +54,37 @@ export const ChatPage = () => {
 
   const [models] = createResource(loadModels);
   const [threadState, { refetch }] = createResource(currentThreadId, loadThreadSnapshot);
+  const effectiveModel = createMemo(() => {
+    const currentModel = selectedModel();
+    if (!currentModel) {
+      return "";
+    }
+
+    const availableModels = models();
+    if (!availableModels?.length) {
+      return currentModel;
+    }
+
+    return availableModels.some((model) => model.name === currentModel) ? currentModel : "";
+  });
+
+  createEffect(() => {
+    const availableModels = models();
+    if (!availableModels?.length) {
+      return;
+    }
+
+    const currentModel = selectedModel();
+    const resolvedModel = effectiveModel();
+    if (!currentModel || resolvedModel === currentModel) {
+      return;
+    }
+
+    setSelectedModel("");
+    setSendError(
+      `Saved model "${currentModel}" is no longer available. Reverted to the backend default model.`,
+    );
+  });
 
   createEffect(() => {
     persistValue(MODEL_STORAGE_KEY, selectedModel());
@@ -133,6 +164,10 @@ export const ChatPage = () => {
           latestRun?.status === "running";
         setRunState({ runId: latestRun?.run_id, isRunning });
 
+        if (latestRun?.status === "error") {
+          setSendError(describeRunFailure(latestRun));
+        }
+
         await refetch();
 
         if (!cancelled && isRunning) {
@@ -181,7 +216,7 @@ export const ChatPage = () => {
         message,
         context: {
           mode: mode(),
-          modelName: selectedModel() || undefined,
+          modelName: effectiveModel() || undefined,
           threadId: currentThreadId(),
         },
       });
@@ -242,7 +277,7 @@ export const ChatPage = () => {
         <div class="meta-badges">
           <span class="meta-badge">Mode: {mode()}</span>
           <span class="meta-badge">
-            Model: {selectedModel() || "backend default"}
+            Model: {effectiveModel() || "backend default"}
           </span>
           <span class="meta-badge">
             Status: {runState().isRunning ? "running" : "idle"}
@@ -302,7 +337,7 @@ export const ChatPage = () => {
       </Switch>
 
       <ChatComposer
-        modelName={selectedModel() || undefined}
+        modelName={effectiveModel() || undefined}
         mode={mode()}
         models={models() ?? []}
         isSending={isSending()}
@@ -385,4 +420,33 @@ function clearPendingMessage(threadId: string) {
   if (pending) {
     window.sessionStorage.removeItem(PENDING_MESSAGE_STORAGE_KEY);
   }
+}
+
+function describeRunFailure(run: unknown) {
+  const modelName = extractRunModelName(run);
+  if (modelName) {
+    return `The latest run failed while using model "${modelName}". Pick an available model or fall back to the backend default, then retry.`;
+  }
+
+  return "The latest run failed before a reply was saved. Retry the message or switch to the backend default model.";
+}
+
+function extractRunModelName(run: unknown) {
+  const record = readRecord(run);
+  const kwargs = readRecord(record?.kwargs);
+  const config = readRecord(kwargs?.config);
+  const configurable = readRecord(config?.configurable);
+  const context = readRecord(kwargs?.context);
+
+  const candidate =
+    configurable?.model_name ??
+    configurable?.modelName ??
+    context?.model_name ??
+    context?.modelName;
+
+  return typeof candidate === "string" && candidate ? candidate : null;
+}
+
+function readRecord(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }

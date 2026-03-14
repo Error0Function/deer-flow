@@ -78,6 +78,17 @@ export async function createChatRun(input: {
 }) {
   const { message, context } = input;
   const threadId = input.threadId ?? (await langGraphClient.threads.create()).thread_id;
+  const runContext: Record<string, unknown> = {
+    mode: context.mode,
+    thinking_enabled: context.mode !== "balance",
+    is_plan_mode: context.mode === "pro",
+    subagent_enabled: false,
+    thread_id: threadId,
+  };
+
+  if (context.modelName) {
+    runContext.model_name = context.modelName;
+  }
 
   return langGraphClient.runs.create(threadId, "lead_agent", {
     input: {
@@ -96,14 +107,7 @@ export async function createChatRun(input: {
     config: {
       recursion_limit: 1000,
     },
-    context: {
-      mode: context.mode,
-      model_name: context.modelName,
-      thinking_enabled: context.mode !== "balance",
-      is_plan_mode: context.mode === "pro",
-      subagent_enabled: false,
-      thread_id: threadId,
-    },
+    context: runContext,
     onDisconnect: "continue",
     streamMode: ["updates", "messages", "custom"],
     streamResumable: true,
