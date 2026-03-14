@@ -41,6 +41,7 @@ class PatchedOpenAICompatibleChatModel(ChatOpenAI):
     reasoning_effort_model_suffix_format: str = "({reasoning_effort})"
     reasoning_effort_model_base_name: str | None = None
     thinking_disabled_reasoning_effort: str | None = "none"
+    thinking_type_as_string: bool = False
 
     @staticmethod
     def _extract_reasoning_content_from_response_message(message_dict: dict[str, Any]) -> str | None:
@@ -80,6 +81,21 @@ class PatchedOpenAICompatibleChatModel(ChatOpenAI):
         if isinstance(extra_body, dict) and _is_disabled_thinking(extra_body.get("thinking")):
             return True
         return _is_disabled_thinking(payload.get("thinking"))
+
+    def _normalize_thinking_payload(self, payload: dict[str, Any]) -> None:
+        """Translate ``thinking: {type: ...}`` to vendor string form when required."""
+        if not self.thinking_type_as_string:
+            return
+
+        extra_body = payload.get("extra_body")
+        if isinstance(extra_body, dict):
+            thinking = extra_body.get("thinking")
+            if isinstance(thinking, dict) and isinstance(thinking.get("type"), str):
+                extra_body["thinking"] = thinking["type"]
+
+        thinking = payload.get("thinking")
+        if isinstance(thinking, dict) and isinstance(thinking.get("type"), str):
+            payload["thinking"] = thinking["type"]
 
     def _get_request_payload(
         self,
@@ -126,6 +142,8 @@ class PatchedOpenAICompatibleChatModel(ChatOpenAI):
                 base_model = self._resolve_base_model_name(raw_model)
                 payload["model"] = f"{base_model}{suffix}"
                 payload.pop("reasoning_effort", None)
+
+        self._normalize_thinking_payload(payload)
 
         return payload
 
