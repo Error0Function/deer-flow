@@ -13,12 +13,12 @@ from .sandbox_info import SandboxInfo
 logger = logging.getLogger(__name__)
 
 
-def wait_for_sandbox_ready(sandbox_url: str, timeout: int = 30) -> bool:
+def wait_for_sandbox_ready(sandbox_url: str, timeout: int = 300) -> bool:
     """Poll sandbox health endpoint until ready or timeout.
 
     Args:
         sandbox_url: URL of the sandbox (e.g. http://k3s:30001).
-        timeout: Maximum time to wait in seconds.
+        timeout: Maximum time to wait in seconds (default: 5 minutes).
 
     Returns:
         True if sandbox is ready, False otherwise.

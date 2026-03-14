@@ -1,6 +1,6 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config check install dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config check install dev dev-daemon start stop up down clean docker-init docker-start docker-reset-state docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-summary docker-logs-errors docker-logs-events docker-logs-sandbox docker-logs-correlate portainer-agent-install portainer-agent-status portainer-agent-uninstall
 
 PYTHON ?= python
 
@@ -21,12 +21,23 @@ help:
 	@echo "  make down            - Stop and remove production Docker containers"
 	@echo ""
 	@echo "Docker Development Commands:"
-	@echo "  make docker-init     - Build the custom k3s image (with pre-cached sandbox image)"
+	@echo "  make docker-init     - Pre-pull the sandbox image into Docker and k3s/containerd"
 	@echo "  make docker-start    - Start Docker services (mode-aware from config.yaml, localhost:2026)"
+	@echo "  make docker-reset-state - Clear persisted LangGraph/thread/sandbox state"
 	@echo "  make docker-stop     - Stop Docker development services"
 	@echo "  make docker-logs     - View Docker development logs"
 	@echo "  make docker-logs-frontend - View Docker frontend logs"
 	@echo "  make docker-logs-gateway - View Docker gateway logs"
+	@echo "  make docker-logs-summary  - Show unified log/runtime summary"
+	@echo "  make docker-logs-errors   - Scan recent logs for warnings/errors"
+	@echo "  make docker-logs-events   - Show recent k3s sandbox events"
+	@echo "  make docker-logs-sandbox SANDBOX_ID=<id> - Inspect a sandbox Pod/Service end-to-end"
+	@echo "  make docker-logs-correlate THREAD_ID=<id> [RUN_ID=<id>] [SANDBOX_ID=<id>] - Correlate IDs across logs/runtime"
+	@echo ""
+	@echo "Portainer Commands:"
+	@echo "  make portainer-agent-install   - Install the official Portainer Kubernetes agent into k3s"
+	@echo "  make portainer-agent-status    - Show Portainer agent status in k3s"
+	@echo "  make portainer-agent-uninstall - Remove the Portainer Kubernetes agent from k3s"
 
 config:
 	@$(PYTHON) ./scripts/configure.py
@@ -59,7 +70,7 @@ setup-sandbox:
 	@echo ""
 	@IMAGE=$$(grep -A 20 "# sandbox:" config.yaml 2>/dev/null | grep "image:" | awk '{print $$2}' | head -1); \
 	if [ -z "$$IMAGE" ]; then \
-		IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"; \
+		IMAGE="ghcr.io/agent-infra/sandbox:latest"; \
 		echo "Using default image: $$IMAGE"; \
 	else \
 		echo "Using configured image: $$IMAGE"; \
@@ -128,6 +139,9 @@ docker-init:
 docker-start:
 	@./scripts/docker.sh start
 
+docker-reset-state:
+	@./scripts/docker.sh reset-state
+
 # Stop Docker development environment
 docker-stop:
 	@./scripts/docker.sh stop
@@ -141,6 +155,30 @@ docker-logs-frontend:
 	@./scripts/docker.sh logs --frontend
 docker-logs-gateway:
 	@./scripts/docker.sh logs --gateway
+
+docker-logs-summary:
+	@$(PYTHON) ./scripts/dev_logs.py summary
+
+docker-logs-errors:
+	@$(PYTHON) ./scripts/dev_logs.py errors
+
+docker-logs-events:
+	@$(PYTHON) ./scripts/dev_logs.py events
+
+docker-logs-sandbox:
+	@$(PYTHON) ./scripts/dev_logs.py inspect-sandbox $(if $(SANDBOX_ID),--sandbox-id $(SANDBOX_ID),) $(if $(POD),--pod $(POD),)
+
+docker-logs-correlate:
+	@$(PYTHON) ./scripts/dev_logs.py correlate $(if $(THREAD_ID),--thread-id $(THREAD_ID),) $(if $(RUN_ID),--run-id $(RUN_ID),) $(if $(SANDBOX_ID),--sandbox-id $(SANDBOX_ID),)
+
+portainer-agent-install:
+	@./scripts/portainer-agent.sh install
+
+portainer-agent-status:
+	@./scripts/portainer-agent.sh status
+
+portainer-agent-uninstall:
+	@./scripts/portainer-agent.sh uninstall
 
 # ==========================================
 # Production Docker Commands

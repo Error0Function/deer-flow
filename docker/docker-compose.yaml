@@ -130,15 +130,15 @@ services:
       dockerfile: Dockerfile
     container_name: deer-flow-provisioner
     volumes:
-      - ~/.kube/config:/root/.kube/config:ro
+      - ${DEER_FLOW_KUBECONFIG_SOURCE_PATH:-~/.kube/config}:/root/.kube/config:ro
     environment:
-      - K8S_NAMESPACE=deer-flow
-      - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
+      - K8S_NAMESPACE=${DEER_FLOW_K8S_NAMESPACE:-deer-flow}
+      - SANDBOX_IMAGE=${DEER_FLOW_SANDBOX_IMAGE:-ghcr.io/agent-infra/sandbox:latest}
       - SKILLS_HOST_PATH=${DEER_FLOW_REPO_ROOT}/skills
       - THREADS_HOST_PATH=${DEER_FLOW_HOME}/threads
       - KUBECONFIG_PATH=/root/.kube/config
-      - NODE_HOST=host.docker.internal
-      - K8S_API_SERVER=https://host.docker.internal:26443
+      - NODE_HOST=${DEER_FLOW_NODE_HOST:-host.docker.internal}
+      - K8S_API_SERVER=${DEER_FLOW_K8S_API_SERVER:-https://host.docker.internal:26443}
     env_file:
       - ../.env
     extra_hosts:

@@ -116,7 +116,7 @@ sandbox:
 
 **Docker Execution with Kubernetes** (runs sandbox code in Kubernetes pods via provisioner service):
 
-This mode runs each sandbox in an isolated Kubernetes Pod on your **host machine's cluster**. Requires Docker Desktop K8s, OrbStack, or similar local K8s setup.
+This mode runs each sandbox in an isolated Kubernetes Pod on your **host machine's cluster**. It works well with single-node local clusters such as k3s, Docker Desktop K8s, OrbStack, or similar setups.
 
 ```yaml
 sandbox:
@@ -125,6 +125,13 @@ sandbox:
 ```
 
 When using Docker development (`make docker-start`), DeerFlow starts the `provisioner` service only if this provisioner mode is configured. In local or plain Docker sandbox modes, `provisioner` is skipped.
+
+If you switch into provisioner mode after previous test runs, clear persisted LangGraph and sandbox state before your next boot:
+
+```bash
+make docker-reset-state
+make docker-start
+```
 
 See [Provisioner Setup Guide](docker/provisioner/README.md) for detailed configuration, prerequisites, and troubleshooting.
 

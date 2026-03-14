@@ -1,0 +1,179 @@
+# DeerFlow development stack for Portainer-managed deployment.
+#
+# This file intentionally uses absolute, env-driven host paths instead of
+# relative ../ mounts so Portainer CE can own the stack without needing Git-based
+# stack deployment.
+#
+# Required environment variables when deploying this stack in Portainer:
+#   DEER_FLOW_REPO_ROOT=<repo-root-visible-inside-wsl>
+#   DEER_FLOW_KUBECONFIG_SOURCE_PATH=<wsl-home>/.kube/config
+#
+# Recommended environment variables:
+#   DEER_FLOW_K8S_API_SERVER=https://host.docker.internal:6443
+#   DEER_FLOW_K8S_NAMESPACE=deer-flow
+#   DEER_FLOW_NODE_HOST=host.docker.internal
+#   PNPM_STORE_PATH=<wsl-home>/.local/share/pnpm/store
+#   DEER_FLOW_UV_CACHE_PATH=<wsl-home>/.cache/uv
+#
+# Use this stack only when Portainer should own the deployment. The existing
+# script-based path remains the source of truth for CLI-driven operations.
+
+services:
+  provisioner:
+    build:
+      context: ${DEER_FLOW_REPO_ROOT}/docker/provisioner
+      dockerfile: Dockerfile
+    volumes:
+      - ${DEER_FLOW_KUBECONFIG_SOURCE_PATH}:/root/.kube/config:ro
+    environment:
+      - K8S_NAMESPACE=${DEER_FLOW_K8S_NAMESPACE:-deer-flow}
+      - SANDBOX_IMAGE=${DEER_FLOW_SANDBOX_IMAGE:-ghcr.io/agent-infra/sandbox:latest}
+      - SKILLS_HOST_PATH=${DEER_FLOW_REPO_ROOT}/skills
+      - THREADS_HOST_PATH=${DEER_FLOW_REPO_ROOT}/backend/.deer-flow/threads
+      - KUBECONFIG_PATH=/root/.kube/config
+      - NODE_HOST=${DEER_FLOW_NODE_HOST:-host.docker.internal}
+      - K8S_API_SERVER=${DEER_FLOW_K8S_API_SERVER:-https://host.docker.internal:6443}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${DEER_FLOW_PORT:-2026}:2026"
+    volumes:
+      - ${DEER_FLOW_REPO_ROOT}/docker/nginx/${NGINX_CONF:-nginx.conf}:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - gateway
+      - langgraph
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ${DEER_FLOW_REPO_ROOT}
+      dockerfile: frontend/Dockerfile
+      target: dev
+      args:
+        PNPM_STORE_PATH: ${PNPM_STORE_PATH}
+    command: sh -c "cd frontend && pnpm run dev > /app/logs/frontend.log 2>&1"
+    volumes:
+      - ${DEER_FLOW_REPO_ROOT}/frontend/src:/app/frontend/src
+      - ${DEER_FLOW_REPO_ROOT}/frontend/public:/app/frontend/public
+      - ${DEER_FLOW_REPO_ROOT}/frontend/next.config.js:/app/frontend/next.config.js:ro
+      - ${DEER_FLOW_REPO_ROOT}/logs:/app/logs
+      - ${PNPM_STORE_PATH}:/root/.local/share/pnpm/store
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+      - CI=true
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ${DEER_FLOW_REPO_ROOT}
+      dockerfile: backend/Dockerfile
+    command: sh -c "cd backend && uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload --reload-include='*.yaml .env' > /app/logs/gateway.log 2>&1"
+    volumes:
+      - ${DEER_FLOW_REPO_ROOT}/backend:/app/backend
+      - gateway-venv:/app/backend/.venv
+      - ${DEER_FLOW_REPO_ROOT}/config.yaml:/app/config.yaml
+      - ${DEER_FLOW_REPO_ROOT}/extensions_config.json:/app/extensions_config.json
+      - ${DEER_FLOW_REPO_ROOT}/skills:/app/skills
+      - ${DEER_FLOW_REPO_ROOT}/logs:/app/logs
+      - ${DEER_FLOW_UV_CACHE_PATH}:/root/.cache/uv
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    environment:
+      - CI=true
+      - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_REPO_ROOT}/backend/.deer-flow
+      - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_REPO_ROOT}/skills
+      - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - JINA_API_KEY=${JINA_API_KEY:-}
+      - INFOQUEST_API_KEY=${INFOQUEST_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - VOLCENGINE_API_KEY=${VOLCENGINE_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - NOVITA_API_KEY=${NOVITA_API_KEY:-}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
+  langgraph:
+    build:
+      context: ${DEER_FLOW_REPO_ROOT}
+      dockerfile: backend/Dockerfile
+    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --no-reload --host 0.0.0.0 --port 2024 > /app/logs/langgraph.log 2>&1"
+    volumes:
+      - ${DEER_FLOW_REPO_ROOT}/backend:/app/backend
+      - langgraph-venv:/app/backend/.venv
+      - ${DEER_FLOW_REPO_ROOT}/config.yaml:/app/config.yaml
+      - ${DEER_FLOW_REPO_ROOT}/extensions_config.json:/app/extensions_config.json
+      - ${DEER_FLOW_REPO_ROOT}/skills:/app/skills
+      - ${DEER_FLOW_REPO_ROOT}/logs:/app/logs
+      - ${DEER_FLOW_UV_CACHE_PATH}:/root/.cache/uv
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    environment:
+      - CI=true
+      - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_REPO_ROOT}/backend/.deer-flow
+      - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_REPO_ROOT}/skills
+      - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - JINA_API_KEY=${JINA_API_KEY:-}
+      - INFOQUEST_API_KEY=${INFOQUEST_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - VOLCENGINE_API_KEY=${VOLCENGINE_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - NOVITA_API_KEY=${NOVITA_API_KEY:-}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
+volumes:
+  gateway-venv:
+  langgraph-venv:
+
+networks:
+  deer-flow-dev:
+    driver: bridge

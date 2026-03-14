@@ -1,0 +1,19 @@
+# Kubernetes Namespace for deer-flow AIO Sandbox
+# 
+# This namespace is used by the provisioner to create sandbox pods.
+# 
+# Usage:
+#   kubectl apply -f namespace.yaml
+#
+# Or with specific kubeconfig:
+#   kubectl --kubeconfig=~/.kube/config-kind-deer-flow apply -f namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deer-flow
+  labels:
+    name: deer-flow
+    app.kubernetes.io/name: deer-flow
+    app.kubernetes.io/component: sandbox-namespace
+    app.kubernetes.io/managed-by: deer-flow-provisioner
