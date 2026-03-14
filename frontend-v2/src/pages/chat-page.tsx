@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "@solidjs/router";
+import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import {
   Match,
   Show,
@@ -7,6 +7,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  onCleanup,
 } from "solid-js";
 
 import { ChatComposer } from "../components/chat-composer";
@@ -16,16 +17,23 @@ import {
   createChatRun,
   loadLatestRun,
   loadModels,
-  loadThreadState,
+  loadThreadSnapshot,
 } from "../lib/api";
-import { mapMessages } from "../lib/messages";
+import {
+  createOptimisticHumanMessage,
+  mapMessages,
+  messageContainsText,
+type RawAgentMessage,
+} from "../lib/messages";
 
 const MODEL_STORAGE_KEY = "deerflow.v2.model";
 const MODE_STORAGE_KEY = "deerflow.v2.mode";
+const PENDING_MESSAGE_STORAGE_KEY = "deerflow.v2.pending-message";
 
 export const ChatPage = () => {
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const currentThreadId = createMemo(() =>
     params.threadId && params.threadId !== "new" ? params.threadId : undefined,
   );
@@ -37,9 +45,15 @@ export const ChatPage = () => {
   const [runState, setRunState] = createSignal<{ runId?: string; isRunning: boolean }>({
     isRunning: false,
   });
+  const [pollGeneration, setPollGeneration] = createSignal(0);
+  const [optimisticMessage, setOptimisticMessage] = createSignal<{
+    id: string;
+    text: string;
+    threadId: string;
+  } | null>(null);
 
   const [models] = createResource(loadModels);
-  const [threadState, { refetch }] = createResource(currentThreadId, loadThreadState);
+  const [threadState, { refetch }] = createResource(currentThreadId, loadThreadSnapshot);
 
   createEffect(() => {
     persistValue(MODEL_STORAGE_KEY, selectedModel());
@@ -51,6 +65,54 @@ export const ChatPage = () => {
 
   createEffect(() => {
     const threadId = currentThreadId();
+    if (!threadId) {
+      setOptimisticMessage(null);
+      return;
+    }
+
+    const currentPending = optimisticMessage();
+    if (currentPending?.threadId === threadId) {
+      return;
+    }
+
+    const routePendingText =
+      typeof location.query.pending === "string" ? location.query.pending : undefined;
+    if (routePendingText) {
+      setOptimisticMessage({
+        id: `pending-${threadId}`,
+        text: routePendingText,
+        threadId,
+      });
+      return;
+    }
+
+    const pending = loadPendingMessage(threadId);
+    setOptimisticMessage(pending);
+  });
+
+  createEffect(() => {
+    const pending = optimisticMessage();
+    const threadId = currentThreadId();
+    const messages = threadState()?.values.messages;
+    if (!pending || !threadId || pending.threadId !== threadId || !messages?.length) {
+      return;
+    }
+
+    const wasPersisted = messages.some((message) =>
+      messageContainsText(message as RawAgentMessage, pending.text),
+    );
+    if (wasPersisted) {
+      clearPendingMessage(threadId);
+      if (typeof location.query.pending === "string") {
+        window.history.replaceState(window.history.state, "", `/v2/chats/${threadId}`);
+      }
+      setOptimisticMessage(null);
+    }
+  });
+
+  createEffect(() => {
+    const threadId = currentThreadId();
+    pollGeneration();
     if (!threadId) {
       setRunState({ isRunning: false });
       return;
@@ -86,15 +148,22 @@ export const ChatPage = () => {
 
     void refresh();
 
-    return () => {
+    onCleanup(() => {
       cancelled = true;
       if (timer) {
         window.clearTimeout(timer);
       }
-    };
+    });
   });
 
-  const timeline = createMemo(() => mapMessages(threadState()?.values.messages));
+  const timeline = createMemo(() => {
+    const messages = [...(threadState()?.values.messages ?? [])];
+    const pending = optimisticMessage();
+    if (pending && pending.threadId === currentThreadId()) {
+      messages.push(createOptimisticHumanMessage(pending.text, pending.id));
+    }
+    return mapMessages(messages);
+  });
   const threadTitle = createMemo(
     () =>
       threadState()?.values.title ||
@@ -106,6 +175,7 @@ export const ChatPage = () => {
     setSendError(null);
 
     try {
+      const optimisticId = `optimistic-${Date.now()}`;
       const run = await createChatRun({
         threadId: currentThreadId(),
         message,
@@ -116,15 +186,31 @@ export const ChatPage = () => {
         },
       });
 
+      setOptimisticMessage({
+        id: optimisticId,
+        text: message,
+        threadId: run.thread_id,
+      });
+      savePendingMessage({
+        id: optimisticId,
+        text: message,
+        threadId: run.thread_id,
+      });
       setRunState({ runId: run.run_id, isRunning: true });
+      setPollGeneration((value) => value + 1);
 
       if (!currentThreadId()) {
-        await navigate(`/chats/${run.thread_id}`, { replace: true });
+        await navigate(
+          `/chats/${run.thread_id}?pending=${encodeURIComponent(message)}`,
+          { replace: true },
+        );
       } else {
         await refetch();
       }
+      return true;
     } catch (error) {
       setSendError(error instanceof Error ? error.message : "Failed to send message.");
+      return false;
     } finally {
       setIsSending(false);
     }
@@ -182,6 +268,9 @@ export const ChatPage = () => {
       </div>
 
       <Switch>
+        <Match when={timeline().length > 0}>
+          <MessageTimeline messages={timeline()} isRunning={runState().isRunning} />
+        </Match>
         <Match when={threadState.loading && !threadState()}>
           <div class="empty-state">
             <div class="empty-card">Loading thread state...</div>
@@ -196,9 +285,6 @@ export const ChatPage = () => {
                 : String(threadState.error)}
             </div>
           </div>
-        </Match>
-        <Match when={timeline().length > 0}>
-          <MessageTimeline messages={timeline()} isRunning={runState().isRunning} />
         </Match>
         <Match when={!timeline().length}>
           <div class="empty-state">
@@ -246,4 +332,57 @@ function persistValue(key: string, value: string) {
     return;
   }
   window.localStorage.setItem(key, value);
+}
+
+function loadPendingMessage(threadId: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const rawValue = window.sessionStorage.getItem(PENDING_MESSAGE_STORAGE_KEY);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as {
+      id?: string;
+      text?: string;
+      threadId?: string;
+    };
+    if (
+      parsed.threadId === threadId &&
+      typeof parsed.id === "string" &&
+      typeof parsed.text === "string"
+    ) {
+      return {
+        id: parsed.id,
+        text: parsed.text,
+        threadId: parsed.threadId,
+      };
+    }
+  } catch {
+    window.sessionStorage.removeItem(PENDING_MESSAGE_STORAGE_KEY);
+  }
+
+  return null;
+}
+
+function savePendingMessage(value: { id: string; text: string; threadId: string }) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(PENDING_MESSAGE_STORAGE_KEY, JSON.stringify(value));
+}
+
+function clearPendingMessage(threadId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const pending = loadPendingMessage(threadId);
+  if (pending) {
+    window.sessionStorage.removeItem(PENDING_MESSAGE_STORAGE_KEY);
+  }
 }

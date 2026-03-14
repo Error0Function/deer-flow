@@ -6,7 +6,9 @@ export type TimelineMessage = {
   parts: Array<{ type: string; body: string }>;
 };
 
-export function mapMessages(messages: Array<Record<string, unknown>> | undefined): TimelineMessage[] {
+export type RawAgentMessage = Record<string, unknown>;
+
+export function mapMessages(messages: RawAgentMessage[] | undefined): TimelineMessage[] {
   return (messages ?? []).map((message, index) => {
     const role = normalizeRole(String(message.type ?? "system"));
     return {
@@ -17,6 +19,30 @@ export function mapMessages(messages: Array<Record<string, unknown>> | undefined
       parts: extractParts(message.content),
     };
   });
+}
+
+export function createOptimisticHumanMessage(text: string, id: string): RawAgentMessage {
+  return {
+    id,
+    type: "human",
+    content: [
+      {
+        type: "text",
+        text,
+      },
+    ],
+  };
+}
+
+export function messageContainsText(
+  message: RawAgentMessage | undefined,
+  expectedText: string,
+) {
+  if (!message) {
+    return false;
+  }
+
+  return stringifyMessageContent(message.content).trim() === expectedText.trim();
 }
 
 function normalizeRole(role: string): TimelineMessage["role"] {

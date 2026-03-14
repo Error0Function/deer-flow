@@ -7,7 +7,7 @@ type ChatComposerProps = {
   isSending: boolean;
   onModeChange: (mode: "balance" | "pro") => void;
   onModelChange: (name: string) => void;
-  onSubmit: (message: string) => Promise<void>;
+  onSubmit: (message: string) => Promise<boolean>;
 };
 
 export const ChatComposer = (props: ChatComposerProps) => {
@@ -19,8 +19,10 @@ export const ChatComposer = (props: ChatComposerProps) => {
       return;
     }
 
-    await props.onSubmit(nextMessage);
-    setDraft("");
+    const didSend = await props.onSubmit(nextMessage);
+    if (didSend) {
+      setDraft("");
+    }
   };
 
   return (

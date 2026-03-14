@@ -59,13 +59,27 @@ export async function loadThreadState(threadId: string) {
   });
 }
 
+export async function loadThreadSnapshot(threadId: string) {
+  const state = await loadThreadState(threadId);
+  if (hasThreadValues(state)) {
+    return state;
+  }
+
+  const history = await langGraphClient.threads.getHistory<AgentThreadState>(threadId, {
+    limit: 1,
+  });
+  return history[0] ?? state;
+}
+
 export async function createChatRun(input: {
   threadId?: string | null;
   message: string;
   context: ChatContext;
 }) {
-  const { threadId, message, context } = input;
-  return langGraphClient.runs.create(threadId ?? null, "lead_agent", {
+  const { message, context } = input;
+  const threadId = input.threadId ?? (await langGraphClient.threads.create()).thread_id;
+
+  return langGraphClient.runs.create(threadId, "lead_agent", {
     input: {
       messages: [
         {
@@ -88,7 +102,7 @@ export async function createChatRun(input: {
       thinking_enabled: context.mode !== "balance",
       is_plan_mode: context.mode === "pro",
       subagent_enabled: false,
-      thread_id: context.threadId,
+      thread_id: threadId,
     },
     onDisconnect: "continue",
     streamMode: ["updates", "messages", "custom"],
@@ -100,11 +114,18 @@ export async function loadLatestRun(threadId: string) {
   const runs = await langGraphClient.runs.list(threadId, {
     limit: 1,
     offset: 0,
-    select: ["run_id", "status", "updated_at", "created_at"],
   });
   return runs[0] ?? null;
 }
 
 export async function cancelRun(threadId: string, runId: string) {
   await langGraphClient.runs.cancel(threadId, runId, false, "interrupt");
+}
+
+function hasThreadValues(state: AgentThreadSnapshot | null | undefined) {
+  if (!state || !state.values || typeof state.values !== "object") {
+    return false;
+  }
+
+  return Object.keys(state.values).length > 0;
 }
